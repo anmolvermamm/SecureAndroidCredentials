@@ -13,4 +13,12 @@
   <string name="permission_rationale">"Contacts permissions are needed for providing email
     completions."
   </string>
+  <string name="delete">Delete Key</string>
+  <string name="encrypt">Encrypt Key</string>
+  <string name="decrypt">Decrypt key</string>
+  <string name="key_alias">Key Alias</string>
+  <string name="generate">Generate New Key</string>
+  <string name="initial_text">Initial Text</string>
+  <string name="final_text">Final Text</string>
+  <string name="decrypt_result">Decrypted Result</string>
 </resources>

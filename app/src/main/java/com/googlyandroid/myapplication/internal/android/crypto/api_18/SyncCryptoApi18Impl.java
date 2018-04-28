@@ -20,11 +20,8 @@ import android.annotation.TargetApi;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
 import android.os.Build;
 import android.security.KeyPairGeneratorSpec;
-
 import com.googlyandroid.myapplication.internal.android.crypto.CipherFactory;
 import com.googlyandroid.myapplication.internal.android.crypto.SyncCrypto;
 import com.googlyandroid.myapplication.internal.android.crypto.misc.Base64;
@@ -48,7 +45,7 @@ import java.security.cert.CertificateException;
 import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.Calendar;
-
+import java.util.Enumeration;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
@@ -60,260 +57,259 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import javax.security.auth.x500.X500Principal;
 
-
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 
 /**
  * Implements {@link SyncCrypto} methods for API 18 (after the Android KeyStore public API).
  */
 public class SyncCryptoApi18Impl implements SyncCrypto {
-    private final static String DELIMITER = "]";
+  private final static String DELIMITER = "]";
 
-    protected KeyStore keyStore;
-    protected Context context;
-    protected static final String X500_PRINCIPAL = "CN=Sync, O=Realm";
-    protected static final String ANDROID_KEYSTORE = "AndroidKeyStore";
-    protected String alias = "Realm";
+  protected KeyStore keyStore;
+  protected Context context;
+  protected static final String X500_PRINCIPAL = "CN=Sync, O=Realm";
+  protected static final String ANDROID_KEYSTORE = "AndroidKeyStore";
 
-    public static final String UNLOCK_ACTION = "com.android.credentials.UNLOCK";
+  public static final String UNLOCK_ACTION = "com.android.credentials.UNLOCK";
 
-    public SyncCryptoApi18Impl (Context context) throws KeyStoreException {
-        PRNGFixes.apply();
-        this.context = context;
-        try {
-            PackageInfo pi = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-            alias += "_" + pi.packageName; // make the alias unique per package
-
-            keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
-            keyStore.load(null);
-        } catch (KeyStoreException e) {
-            e.printStackTrace();
-            throw new KeyStoreException(e);
-        } catch (CertificateException e) {
-            e.printStackTrace();
-            throw new KeyStoreException(e);
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-            throw new KeyStoreException(e);
-        } catch (IOException e) {
-            e.printStackTrace();
-            throw new KeyStoreException(e);
-        } catch (PackageManager.NameNotFoundException ignored) {
-        }
+  public SyncCryptoApi18Impl(Context context) throws KeyStoreException {
+    PRNGFixes.apply();
+    this.context = context;
+    try {
+      keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
+      keyStore.load(null);
+    } catch (KeyStoreException e) {
+      e.printStackTrace();
+      throw new KeyStoreException(e);
+    } catch (CertificateException e) {
+      e.printStackTrace();
+      throw new KeyStoreException(e);
+    } catch (NoSuchAlgorithmException e) {
+      e.printStackTrace();
+      throw new KeyStoreException(e);
+    } catch (IOException e) {
+      e.printStackTrace();
+      throw new KeyStoreException(e);
     }
+  }
 
-    @Override
-    public String encrypt(String plainText) throws KeyStoreException {
-        try {
-            SecretKey key = generateAESKey();
-            byte[] encrypted = encryptedUsingAESKey(key, plainText);
-            byte[] encryptedKey = encryptAESKeyUsingRSA(key);
-            // append with AES enc with RSA
-            return String.format("%s%s%s", Base64.to(encryptedKey), DELIMITER,
-                    Base64.to(encrypted));
-        } catch (Exception e) {
-            throw new KeyStoreException(e);
-        }
+  @Override public String encrypt(String alias, String plainText) throws KeyStoreException {
+    try {
+      SecretKey key = generateAESKey();
+      byte[] encrypted = encryptedUsingAESKey(key, plainText);
+      byte[] encryptedKey = encryptAESKeyUsingRSA(alias, key);
+      // append with AES enc with RSA
+      return String.format("%s%s%s", Base64.to(encryptedKey), DELIMITER, Base64.to(encrypted));
+    } catch (Exception e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    @Override
-    public String decrypt(String cipherText) throws KeyStoreException {
-        try {
-            String[] fields = cipherText.split(DELIMITER);
-            if (fields.length != 2) {
-                throw new IllegalArgumentException("Invalid encrypted text format");
-            }
+  @Override public Enumeration<String> getAliases() throws KeyStoreException {
+    return keyStore.aliases();
+  }
 
-            byte[] aesEncWithRSA = Base64.from(fields[0]);
-            byte[] encToken = Base64.from(fields[1]);
+  @Override public void deleteEntry(String alias) throws KeyStoreException {
+    keyStore.deleteEntry(alias);
+  }
 
-            // decrypt AES using RSA
-            SecretKey key = decryptAESKeyUsingRSA(aesEncWithRSA);
+  @Override public String decrypt(String alias, String cipherText) throws KeyStoreException {
+    try {
+      String[] fields = cipherText.split(DELIMITER);
+      if (fields.length != 2) {
+        throw new IllegalArgumentException("Invalid encrypted text format");
+      }
 
-            // decrypt Token using decrypted AES
-            return decryptedUsingAESKey(key, encToken);
-        } catch (Exception e) {
-            throw new KeyStoreException(e);
-        }
+      byte[] aesEncWithRSA = Base64.from(fields[0]);
+      byte[] encToken = Base64.from(fields[1]);
+
+      // decrypt AES using RSA
+      SecretKey key = decryptAESKeyUsingRSA(alias, aesEncWithRSA);
+
+      // decrypt Token using decrypted AES
+      return decryptedUsingAESKey(key, encToken);
+    } catch (Exception e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    @Override
-    public boolean is_keystore_unlocked() throws KeyStoreException {
-        try {
-            Class<?> keyStoreClass = Class.forName("android.security.KeyStore");
-            Method getInstanceMethod = keyStoreClass.getMethod("getInstance");
-            Object invoke = getInstanceMethod.invoke(null);
+  @Override public boolean is_keystore_unlocked() throws KeyStoreException {
+    try {
+      Class<?> keyStoreClass = Class.forName("android.security.KeyStore");
+      Method getInstanceMethod = keyStoreClass.getMethod("getInstance");
+      Object invoke = getInstanceMethod.invoke(null);
 
-            Method isUnlockedMethod = keyStoreClass.getMethod("isUnlocked");
-            boolean isUnlocked = (boolean)isUnlockedMethod.invoke(invoke);
-            return isUnlocked;
-        } catch (ClassNotFoundException e) {
-            throw new KeyStoreException(e);
-        } catch (NoSuchMethodException e) {
-            throw new KeyStoreException(e);
-        } catch (IllegalAccessException e) {
-            throw new KeyStoreException(e);
-        } catch (InvocationTargetException e) {
-            throw new KeyStoreException(e);
-        }
+      Method isUnlockedMethod = keyStoreClass.getMethod("isUnlocked");
+      boolean isUnlocked = (boolean) isUnlockedMethod.invoke(invoke);
+      return isUnlocked;
+    } catch (ClassNotFoundException e) {
+      throw new KeyStoreException(e);
+    } catch (NoSuchMethodException e) {
+      throw new KeyStoreException(e);
+    } catch (IllegalAccessException e) {
+      throw new KeyStoreException(e);
+    } catch (InvocationTargetException e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    @Override
-    public void unlock_keystore() throws KeyStoreException {
-        try {
-            Intent intent = new Intent(UNLOCK_ACTION);
-            intent.addFlags(FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
-        } catch (ActivityNotFoundException e) {
-            throw new KeyStoreException(e);
-        }
+  @Override public void unlock_keystore() throws KeyStoreException {
+    try {
+      Intent intent = new Intent(UNLOCK_ACTION);
+      intent.addFlags(FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(intent);
+    } catch (ActivityNotFoundException e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
-    public void create_key_if_not_available() throws KeyStoreException {
-        try {
-            if (!keyStore.containsAlias(alias)) {
-                Calendar start = Calendar.getInstance();
-                Calendar end = Calendar.getInstance();
-                end.add(Calendar.YEAR, 10);
+  @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR2)
+  public void create_key_if_not_available(String toString) throws KeyStoreException {
+    try {
+      if (!keyStore.containsAlias(toString)) {
+        Calendar start = Calendar.getInstance();
+        Calendar end = Calendar.getInstance();
+        end.add(Calendar.YEAR, 10);
 
-                KeyPairGeneratorSpec spec = new KeyPairGeneratorSpec.Builder(context)
-                        .setAlias(alias)
-                        .setSubject(new X500Principal(X500_PRINCIPAL))
-                        .setSerialNumber(BigInteger.ONE)
-                        .setStartDate(start.getTime())
-                        .setEndDate(end.getTime())
-                        .build();
-                KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA",
-                        "AndroidKeyStore");
-                generator.initialize(spec);
-                generator.generateKeyPair();
-            }
-        } catch (Exception e) {
-            throw new KeyStoreException(e);
-        }
+        KeyPairGeneratorSpec spec = new KeyPairGeneratorSpec.Builder(context).setAlias(toString)
+            .setSubject(new X500Principal(X500_PRINCIPAL))
+            .setSerialNumber(BigInteger.ONE)
+            .setStartDate(start.getTime())
+            .setEndDate(end.getTime())
+            .build();
+        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "AndroidKeyStore");
+        generator.initialize(spec);
+        generator.generateKeyPair();
+      }
+    } catch (Exception e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    private SecretKey generateAESKey() throws NoSuchAlgorithmException {
-        // Generate a 256-bit key
-        final int outputKeyLength = 256;
+  private SecretKey generateAESKey() throws NoSuchAlgorithmException {
+    // Generate a 256-bit key
+    final int outputKeyLength = 256;
 
-        SecureRandom secureRandom = new SecureRandom();
-        // Do *not* seed secureRandom! Automatically seeded from system entropy.
-        KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-        keyGenerator.init(outputKeyLength, secureRandom);
-        SecretKey key = keyGenerator.generateKey();
-        return key;
+    SecureRandom secureRandom = new SecureRandom();
+    // Do *not* seed secureRandom! Automatically seeded from system entropy.
+    KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+    keyGenerator.init(outputKeyLength, secureRandom);
+    SecretKey key = keyGenerator.generateKey();
+    return key;
+  }
+
+  private byte[] encryptedUsingAESKey(SecretKey key, String plainText) throws KeyStoreException {
+    try {
+      Cipher cipher = Cipher.getInstance("AES");
+      cipher.init(Cipher.ENCRYPT_MODE, key);
+      return cipher.doFinal(plainText.getBytes("UTF-8"));
+    } catch (NoSuchAlgorithmException e) {
+      throw new KeyStoreException(e);
+    } catch (NoSuchPaddingException e) {
+      throw new KeyStoreException(e);
+    } catch (BadPaddingException e) {
+      throw new KeyStoreException(e);
+    } catch (UnsupportedEncodingException e) {
+      throw new KeyStoreException(e);
+    } catch (IllegalBlockSizeException e) {
+      throw new KeyStoreException(e);
+    } catch (InvalidKeyException e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    private byte[] encryptedUsingAESKey(SecretKey key, String plainText) throws KeyStoreException {
-        try {
-            Cipher cipher = Cipher.getInstance("AES");
-            cipher.init(Cipher.ENCRYPT_MODE, key);
-            return cipher.doFinal(plainText.getBytes("UTF-8"));
-        } catch (NoSuchAlgorithmException e) {
-            throw new KeyStoreException(e);
-        } catch (NoSuchPaddingException e) {
-            throw new KeyStoreException(e);
-        } catch (BadPaddingException e) {
-            throw new KeyStoreException(e);
-        } catch (UnsupportedEncodingException e) {
-            throw new KeyStoreException(e);
-        } catch (IllegalBlockSizeException e) {
-            throw new KeyStoreException(e);
-        } catch (InvalidKeyException e) {
-            throw new KeyStoreException(e);
-        }
+  private String decryptedUsingAESKey(SecretKey key, byte[] cipherText) throws KeyStoreException {
+    try {
+      Cipher cipher = Cipher.getInstance("AES");
+      cipher.init(Cipher.DECRYPT_MODE, key);
+      byte[] encrypted = cipher.doFinal(cipherText);
+      return new String(encrypted, "UTF-8");
+    } catch (NoSuchAlgorithmException e) {
+      throw new KeyStoreException(e);
+    } catch (NoSuchPaddingException e) {
+      throw new KeyStoreException(e);
+    } catch (BadPaddingException e) {
+      throw new KeyStoreException(e);
+    } catch (UnsupportedEncodingException e) {
+      throw new KeyStoreException(e);
+    } catch (IllegalBlockSizeException e) {
+      throw new KeyStoreException(e);
+    } catch (InvalidKeyException e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    private String decryptedUsingAESKey(SecretKey key, byte[] cipherText) throws KeyStoreException {
-        try {
-            Cipher cipher = Cipher.getInstance("AES");
-            cipher.init(Cipher.DECRYPT_MODE, key);
-            byte[] encrypted = cipher.doFinal(cipherText);
-            return new String(encrypted, "UTF-8");
-        } catch (NoSuchAlgorithmException e) {
-            throw new KeyStoreException(e);
-        } catch (NoSuchPaddingException e) {
-            throw new KeyStoreException(e);
-        } catch (BadPaddingException e) {
-            throw new KeyStoreException(e);
-        } catch (UnsupportedEncodingException e) {
-            throw new KeyStoreException(e);
-        } catch (IllegalBlockSizeException e) {
-            throw new KeyStoreException(e);
-        } catch (InvalidKeyException e) {
-            throw new KeyStoreException(e);
-        }
+  private byte[] encryptAESKeyUsingRSA(String alias, SecretKey key) throws KeyStoreException {
+    try {
+      KeyStore.PrivateKeyEntry privateKeyEntry =
+          (KeyStore.PrivateKeyEntry) keyStore.getEntry(alias, null);
+      RSAPublicKey publicKey = (RSAPublicKey) privateKeyEntry.getCertificate().getPublicKey();
+
+      Cipher cipher = CipherFactory.get();
+      cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+
+      ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+      CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher);
+      cipherOutputStream.write(key.getEncoded());
+      cipherOutputStream.close();
+
+      return outputStream.toByteArray();
+    } catch (NoSuchPaddingException e) {
+      throw new KeyStoreException(e);
+    } catch (NoSuchAlgorithmException e) {
+      throw new KeyStoreException(e);
+    } catch (NoSuchProviderException e) {
+      throw new KeyStoreException(e);
+    } catch (InvalidKeyException e) {
+      throw new KeyStoreException(e);
+    } catch (KeyStoreException e) {
+      throw new KeyStoreException(e);
+    } catch (UnrecoverableEntryException e) {
+      throw new KeyStoreException(e);
+    } catch (IOException e) {
+      throw new KeyStoreException(e);
     }
+  }
 
-    private byte[] encryptAESKeyUsingRSA(SecretKey key) throws KeyStoreException {
-        try {
-            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(alias, null);
-            RSAPublicKey publicKey = (RSAPublicKey) privateKeyEntry.getCertificate().getPublicKey();
+  private SecretKeySpec decryptAESKeyUsingRSA(String alias, byte[] aesEncKey)
+      throws KeyStoreException {
+    try {
+      KeyStore.PrivateKeyEntry privateKeyEntry =
+          (KeyStore.PrivateKeyEntry) keyStore.getEntry(alias, null);
+      Cipher cipher = CipherFactory.get();
+      cipher.init(Cipher.DECRYPT_MODE, privateKeyEntry.getPrivateKey());
 
-            Cipher cipher = CipherFactory.get();
-            cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+      CipherInputStream cipherInputStream =
+          new CipherInputStream(new ByteArrayInputStream(aesEncKey), cipher);
+      ArrayList<Byte> values = new ArrayList<>();
+      int nextByte;
+      while ((nextByte = cipherInputStream.read()) != -1) {
+        values.add((byte) nextByte);
+      }
 
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher);
-            cipherOutputStream.write(key.getEncoded());
-            cipherOutputStream.close();
+      final byte[] bytes = new byte[values.size()];
+      for (int i = 0; i < bytes.length; i++) {
+        bytes[i] = values.get(i).byteValue();
+      }
 
-            return outputStream.toByteArray();
-        } catch (NoSuchPaddingException e) {
-            throw new KeyStoreException(e);
-        } catch (NoSuchAlgorithmException e) {
-            throw new KeyStoreException(e);
-        } catch (NoSuchProviderException e) {
-            throw new KeyStoreException(e);
-        } catch (InvalidKeyException e) {
-            throw new KeyStoreException(e);
-        } catch (KeyStoreException e) {
-            throw new KeyStoreException(e);
-        } catch (UnrecoverableEntryException e) {
-            throw new KeyStoreException(e);
-        } catch (IOException e) {
-            throw new KeyStoreException(e);
-        }
+      SecretKeySpec originalKey = new SecretKeySpec(bytes, "AES");
+      return originalKey;
+    } catch (NoSuchPaddingException e) {
+      throw new KeyStoreException(e);
+    } catch (NoSuchAlgorithmException e) {
+      throw new KeyStoreException(e);
+    } catch (NoSuchProviderException e) {
+      throw new KeyStoreException(e);
+    } catch (UnsupportedEncodingException e) {
+      throw new KeyStoreException(e);
+    } catch (IOException e) {
+      throw new KeyStoreException(e);
+    } catch (InvalidKeyException e) {
+      throw new KeyStoreException(e);
+    } catch (UnrecoverableEntryException e) {
+      throw new KeyStoreException(e);
+    } catch (KeyStoreException e) {
+      throw new KeyStoreException(e);
     }
-
-    private SecretKeySpec decryptAESKeyUsingRSA(byte[] aesEncKey) throws KeyStoreException {
-        try {
-            KeyStore.PrivateKeyEntry privateKeyEntry = (KeyStore.PrivateKeyEntry) keyStore.getEntry(alias, null);
-            Cipher cipher = CipherFactory.get();
-            cipher.init(Cipher.DECRYPT_MODE, privateKeyEntry.getPrivateKey());
-
-            CipherInputStream cipherInputStream = new CipherInputStream(new ByteArrayInputStream(aesEncKey), cipher);
-            ArrayList<Byte> values = new ArrayList<>();
-            int nextByte;
-            while ((nextByte = cipherInputStream.read()) != -1) {
-                values.add((byte)nextByte);
-            }
-
-            final byte[] bytes = new byte[values.size()];
-            for (int i = 0; i < bytes.length; i++) {
-                bytes[i] = values.get(i).byteValue();
-            }
-
-            SecretKeySpec originalKey = new SecretKeySpec(bytes, "AES");
-            return originalKey;
-        } catch (NoSuchPaddingException e) {
-            throw new KeyStoreException(e);
-        } catch (NoSuchAlgorithmException e) {
-            throw new KeyStoreException(e);
-        } catch (NoSuchProviderException e) {
-            throw new KeyStoreException(e);
-        } catch (UnsupportedEncodingException e) {
-            throw new KeyStoreException(e);
-        } catch (IOException e) {
-            throw new KeyStoreException(e);
-        } catch (InvalidKeyException e) {
-            throw new KeyStoreException(e);
-        } catch (UnrecoverableEntryException e) {
-            throw new KeyStoreException(e);
-        } catch (KeyStoreException e) {
-            throw new KeyStoreException(e);
-        }
-    }
+  }
 }

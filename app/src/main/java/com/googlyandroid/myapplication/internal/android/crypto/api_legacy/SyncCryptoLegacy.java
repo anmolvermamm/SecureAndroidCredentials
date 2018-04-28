@@ -36,6 +36,7 @@ import java.security.KeyStoreException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 
+import java.util.Enumeration;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -50,7 +51,6 @@ import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
  */
 public class SyncCryptoLegacy implements SyncCrypto {
     private Context context;
-    private String alias = "Realm";
     private int mError = NO_ERROR;
     private SecureRandom random = new SecureRandom();
 
@@ -75,16 +75,10 @@ public class SyncCryptoLegacy implements SyncCrypto {
     public SyncCryptoLegacy (Context context) throws KeyStoreException {
         PRNGFixes.apply();
         this.context = context;
-
-        try {
-            PackageInfo pi = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
-            alias += "_" + pi.packageName; // make the alias unique per package
-        } catch (Exception ignore) {
-        }
     }
 
     @Override
-    public String encrypt(String plainText) throws KeyStoreException {
+    public String encrypt(String alias,String plainText) throws KeyStoreException {
         try {
             Cipher cipher = CipherFactory.get();
 
@@ -105,8 +99,16 @@ public class SyncCryptoLegacy implements SyncCrypto {
         }
     }
 
+    @Override public Enumeration<String> getAliases() throws KeyStoreException {
+        return null;
+    }
+
+    @Override public void deleteEntry(String alias) throws KeyStoreException {
+
+    }
+
     @Override
-    public String decrypt(String cipherText) throws KeyStoreException {
+    public String decrypt(String alias,String cipherText) throws KeyStoreException {
         byte[] keyBytes = get(alias);
         if (keyBytes == null) {
             return null;
@@ -150,7 +152,7 @@ public class SyncCryptoLegacy implements SyncCrypto {
     }
 
     @Override
-    public void create_key_if_not_available() throws KeyStoreException {
+    public void create_key_if_not_available(String alias) throws KeyStoreException {
         if (get(alias) == null) {
             try {
                 KeyGenerator kg = KeyGenerator.getInstance("AES");

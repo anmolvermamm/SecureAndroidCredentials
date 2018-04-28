@@ -16,7 +16,6 @@ import java.security.NoSuchProviderException;
 import java.util.Calendar;
 import javax.security.auth.x500.X500Principal;
 
-
 /**
  * Implements {@link SyncCrypto} methods for API 23 (after the Android KeyStore public API), using
  * the introduced {@link KeyGenParameterSpec}.
@@ -28,7 +27,7 @@ public class SyncCryptoApi23Impl extends SyncCryptoApi18Impl {
 
     @TargetApi(Build.VERSION_CODES.M)
     @Override
-    public void create_key_if_not_available() throws KeyStoreException {
+    public void create_key_if_not_available(String alias) throws KeyStoreException {
         if (!keyStore.containsAlias(alias)) {
             try {
                 Calendar start = Calendar.getInstance();
