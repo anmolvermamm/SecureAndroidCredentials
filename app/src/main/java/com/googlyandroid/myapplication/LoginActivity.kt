@@ -57,6 +57,9 @@ class LoginActivity : AppCompatActivity() {
 
   private fun refreshKeys() {
     keyAliases = ArrayList()
+    encryptedText.setText("")
+    decryptedText.setText("")
+    startText.setText("")
     try {
       keyAliases!!.addAll(factory!!.aliases.toList())
     } catch (e: Exception) {
