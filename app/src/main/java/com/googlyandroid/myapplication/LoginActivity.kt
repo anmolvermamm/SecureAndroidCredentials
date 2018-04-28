@@ -17,6 +17,7 @@ import com.googlyandroid.myapplication.internal.android.crypto.SyncCrypto
 import com.googlyandroid.myapplication.internal.android.crypto.SyncCryptoFactory
 import kotlinx.android.synthetic.main.activity_login.listView
 import kotlinx.android.synthetic.main.activity_main_header.aliasText
+import kotlinx.android.synthetic.main.activity_main_header.decryptedText
 import kotlinx.android.synthetic.main.activity_main_header.encryptedText
 import kotlinx.android.synthetic.main.activity_main_header.generateKeyPair
 import kotlinx.android.synthetic.main.activity_main_header.startText
@@ -103,14 +104,15 @@ class LoginActivity : AppCompatActivity() {
       val encryptButton = itemView.findViewById<View>(R.id.encryptButton) as Button
       encryptButton.setOnClickListener(
           View.OnClickListener {
-            factory?.encrypt(keyAlias.text.toString(), startText.text.toString())
+            encryptedText.setText(
+                factory?.encrypt(keyAlias.text.toString(), startText.text.toString()))
           })
       val decryptButton = itemView.findViewById<View>(R.id.decryptButton) as Button
       decryptButton.setOnClickListener(
           View.OnClickListener {
             if (encryptedText.text.toString().isNotEmpty()) {
-              factory?.decrypt(
-                  keyAlias.text.toString(), encryptedText.text.toString())
+              decryptedText.setText(factory?.decrypt(
+                  keyAlias.text.toString(), encryptedText.text.toString()))
             }
           })
       val deleteButton = itemView.findViewById<View>(R.id.deleteButton) as Button
