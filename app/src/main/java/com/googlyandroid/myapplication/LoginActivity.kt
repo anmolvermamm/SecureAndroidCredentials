@@ -1,7 +1,9 @@
 package com.googlyandroid.myapplication
 
+import android.app.ProgressDialog
 import android.content.Context
 import android.content.DialogInterface
+import android.os.AsyncTask
 import android.os.Bundle
 import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
@@ -47,9 +49,23 @@ class LoginActivity : AppCompatActivity() {
 
     generateKeyPair.setOnClickListener {
       if (generateKeyPair.text.toString().isNotEmpty()) {
-        factory?.create_key_if_not_available(aliasText.text.toString())
+        var alias = aliasText.text.toString()
+        var dialog = ProgressDialog.show(this@LoginActivity, "Creating...", "alias $alias")
+        dialog.show()
+        object : AsyncTask<String, String, String>() {
+          override fun doInBackground(vararg p0: String?): String {
+            factory?.create_key_if_not_available(alias)
+            return ""
+          }
+
+          override fun onPostExecute(result: String?) {
+            super.onPostExecute(result)
+            dialog.dismiss()
+            refreshKeys()
+          }
+        }.execute()
+
       }
-      refreshKeys()
     }
     refreshKeys()
 
