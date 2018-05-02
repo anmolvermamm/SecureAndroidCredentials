@@ -50,25 +50,42 @@ class LoginActivity : AppCompatActivity() {
     generateKeyPair.setOnClickListener {
       if (generateKeyPair.text.toString().isNotEmpty()) {
         var alias = aliasText.text.toString()
-        var dialog = ProgressDialog.show(this@LoginActivity, "Creating...", "alias $alias")
-        dialog.show()
-        object : AsyncTask<String, String, String>() {
-          override fun doInBackground(vararg p0: String?): String {
-            factory?.create_key_if_not_available(alias)
-            return ""
-          }
 
-          override fun onPostExecute(result: String?) {
-            super.onPostExecute(result)
-            dialog.dismiss()
-            refreshKeys()
+        factory?.let {
+          if (it.is_keystore_unlocked) {
+            createKeyForAlias(alias)
+          } else {
+            it.unlock_keystore()
           }
-        }.execute()
+        }
 
       }
     }
     refreshKeys()
 
+  }
+
+  private fun createKeyForAlias(alias: String) {
+    var dialog = ProgressDialog.show(this@LoginActivity, "Creating...", "alias $alias")
+
+
+    object : AsyncTask<String, String, String>() {
+      override fun onPreExecute() {
+        super.onPreExecute()
+        dialog.show()
+      }
+
+      override fun doInBackground(vararg p0: String?): String {
+        factory?.create_key_if_not_available(alias)
+        return ""
+      }
+
+      override fun onPostExecute(result: String?) {
+        super.onPostExecute(result)
+        dialog.dismiss()
+        refreshKeys()
+      }
+    }.execute()
   }
 
   private fun refreshKeys() {
@@ -91,8 +108,15 @@ class LoginActivity : AppCompatActivity() {
         .setMessage("Do you want to delete the key \"$alias\" from the keystore?")
         .setPositiveButton("Yes", DialogInterface.OnClickListener { dialog, which ->
           try {
-            factory?.deleteEntry(alias)
-            refreshKeys()
+            factory?.let {
+              if (it.is_keystore_unlocked) {
+                factory?.deleteEntry(alias)
+                refreshKeys()
+              } else {
+                it.unlock_keystore()
+              }
+            }
+
           } catch (e: KeyStoreException) {
             Toast.makeText(this@LoginActivity,
                 "Exception " + e.message + " occured",
@@ -123,16 +147,32 @@ class LoginActivity : AppCompatActivity() {
       val encryptButton = itemView.findViewById<View>(R.id.encryptButton) as Button
       encryptButton.setOnClickListener(
           View.OnClickListener {
-            encryptedText.setText(
-                factory?.encrypt(keyAlias.text.toString(), startText.text.toString()))
+
+            factory?.let {
+              if (it.is_keystore_unlocked) {
+                encryptedText.setText(
+                    factory?.encrypt(keyAlias.text.toString(), startText.text.toString()))
+
+              } else {
+                it.unlock_keystore()
+              }
+            }
+
           })
       val decryptButton = itemView.findViewById<View>(R.id.decryptButton) as Button
       decryptButton.setOnClickListener(
           View.OnClickListener {
-            if (encryptedText.text.toString().isNotEmpty()) {
-              decryptedText.setText(factory?.decrypt(
-                  keyAlias.text.toString(), encryptedText.text.toString()))
+            factory?.let {
+              if (it.is_keystore_unlocked) {
+                if (encryptedText.text.toString().isNotEmpty()) {
+                  decryptedText.setText(factory?.decrypt(
+                      keyAlias.text.toString(), encryptedText.text.toString()))
+                }
+              } else {
+                it.unlock_keystore()
+              }
             }
+
           })
       val deleteButton = itemView.findViewById<View>(R.id.deleteButton) as Button
       deleteButton.setOnClickListener(
