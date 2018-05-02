@@ -147,15 +147,17 @@ class LoginActivity : AppCompatActivity() {
       val encryptButton = itemView.findViewById<View>(R.id.encryptButton) as Button
       encryptButton.setOnClickListener(
           View.OnClickListener {
+            try {
+              factory?.let {
+                if (it.is_keystore_unlocked) {
+                  encryptedText.setText(
+                      factory?.encrypt(keyAlias.text.toString(), startText.text.toString()))
 
-            factory?.let {
-              if (it.is_keystore_unlocked) {
-                encryptedText.setText(
-                    factory?.encrypt(keyAlias.text.toString(), startText.text.toString()))
-
-              } else {
-                it.unlock_keystore()
+                } else {
+                  it.unlock_keystore()
+                }
               }
+            } catch (ex: Exception) {
             }
 
           })
@@ -164,10 +166,15 @@ class LoginActivity : AppCompatActivity() {
           View.OnClickListener {
             factory?.let {
               if (it.is_keystore_unlocked) {
-                if (encryptedText.text.toString().isNotEmpty()) {
-                  decryptedText.setText(factory?.decrypt(
-                      keyAlias.text.toString(), encryptedText.text.toString()))
+                try {
+                  if (encryptedText.text.toString().isNotEmpty()) {
+                    decryptedText.setText(factory?.decrypt(
+                        keyAlias.text.toString(), encryptedText.text.toString()))
+                  }
+                } catch (ex: Exception) {
+
                 }
+
               } else {
                 it.unlock_keystore()
               }
